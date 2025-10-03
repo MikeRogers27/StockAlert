@@ -9,3 +9,5 @@ wheels/
 # Virtual environments
 .venv
 .vscode/launch.json
+stockalert.log
+sp500_cache.json
