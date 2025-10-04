@@ -27,7 +27,7 @@ def logger_setup(loglevel='INFO'):
         format='%(asctime)s %(levelname)s:%(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
-            logging.FileHandler('stockalert.log'),
+            # logging.FileHandler('stockalert.log'),
             logging.StreamHandler()
         ]
     )
@@ -138,6 +138,7 @@ def send_email(current_price, peak_price, drop_percent):
     except Exception as e:
         LOG.error(f"Failed to send email: {e}")
 
+
 def monitor_sp500_peak_drop(check_interval=3600):
     """Monitor S&P 500 for drop from 3-month smoothed peak with dynamic threshold"""
     LOG.info("Starting S&P 500 monitoring with dynamic threshold")
@@ -151,11 +152,11 @@ def monitor_sp500_peak_drop(check_interval=3600):
             # Get historical data and calculate smoothed peak
             historical_prices = get_sp500_historical()
             smoothed_peak = statistics.mean(sorted(historical_prices, reverse=True)[:10])
-            # drop_threshold = smoothed_peak * (1 - threshold_percent / 100)
             
             # Get current price
             current_price = get_current_price()
             current_drop_percent = ((smoothed_peak - current_price) / smoothed_peak) * 100
+            current_drop_percent = 5
             
             LOG.info(f"Current: {current_price:.2f}, Peak: {smoothed_peak:.2f}, Drop: {current_drop_percent:.1f}%, Threshold: {threshold_percent:.1f}%")
             
