@@ -105,6 +105,7 @@ def get_current_price(asset_type):
         LOG.error(f"Failed to get current {asset_type} price: {e}")
         raise
 
+
 def get_threshold_state(asset_type):
     """Get current threshold state from cache"""
     threshold_file = f'{asset_type}_threshold.json'
@@ -126,49 +127,57 @@ def get_threshold_state(asset_type):
     
     return state
 
+
 def save_threshold_state(asset_type, state):
     """Save threshold state to cache"""
     with open(f'{asset_type}_threshold.json', 'w') as f:
         json.dump(state, f)
 
-def send_email(asset_type, current_price, peak_price, drop_percent):
-    """Send email notification and update threshold"""
+
+def send_notification_email(subject, body):
+    """Send notification email"""
     sender_email = os.getenv('SENDER_EMAIL')
     sender_password = os.getenv('SENDER_PASSWORD')
     recipient_email = os.getenv('RECIPIENT_EMAIL')
     
-    asset_name = 'S&P 500' if asset_type == 'sp500' else 'Bitcoin'
-    
     if not all([sender_email, sender_password, recipient_email]):
-        LOG.warning(f"Email not configured. {asset_name} dropped {drop_percent:.1f}% from peak {peak_price} to {current_price}")
+        LOG.warning(f"Email not configured. {subject}: {body}")
         return
     
     try:
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = recipient_email
-        msg['Subject'] = f"{asset_name} Alert: {drop_percent:.1f}% Drop from Peak"
-        
-        body = f"{asset_name} has dropped {drop_percent:.1f}% from 3-month peak of {peak_price:.2f} to current price {current_price:.2f}"
+        msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
         
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(sender_email, sender_password)
             server.send_message(msg)
-                
-        LOG.info(f"Alert sent! {asset_name}: {current_price} (down {drop_percent:.1f}% from peak).")
+        
+        LOG.info(f"Email sent: {subject}")
     except Exception as e:
         LOG.error(f"Failed to send email: {e}")
 
+def send_email(asset_type, current_price, peak_price, drop_percent):
+    """Send price drop alert email"""
+    asset_name = 'S&P 500' if asset_type == 'sp500' else 'Bitcoin'
+    subject = f"{asset_name} Alert: {drop_percent:.1f}% Drop from Peak"
+    body = f"{asset_name} has dropped {drop_percent:.1f}% from 3-month peak of {peak_price:.2f} to current price {current_price:.2f}"
+    send_notification_email(subject, body)
+
+
+import threading
+stop_event = threading.Event()
 
 def monitor_asset(asset_type, check_interval=3600):
     """Monitor asset for drop from 3-month smoothed peak with dynamic threshold"""
     asset_name = 'S&P 500' if asset_type == 'sp500' else 'Bitcoin'
     LOG.info(f"Starting {asset_name} monitoring with dynamic threshold")
     
-    while True:
-        try:
+    try:
+        while not stop_event.is_set():
             # Get current threshold state
             threshold_state = get_threshold_state(asset_type)
             threshold_percent = threshold_state['threshold_percent']
@@ -192,16 +201,21 @@ def monitor_asset(asset_type, check_interval=3600):
                 state = {'threshold_percent': new_threshold, 'last_updated': datetime.now().isoformat()}
                 save_threshold_state(asset_type, state)
                 LOG.info(f"{asset_name} new drop threshold saved: {new_threshold:.1f}%")
+            
+            time.sleep(check_interval)
+    
+    except Exception as e:
+        LOG.error(f"{asset_name} monitoring fatal error: {e}")
+        send_notification_email(f"StockAlert Error - {asset_name}", f"Fatal error in {asset_name} monitoring: {str(e)}")
+        stop_event.set()  # Signal other threads to stop
+        raise
 
-        except Exception as e:
-            LOG.error(f"{asset_name} monitoring error: {e}")
-        
-        time.sleep(check_interval)
 
 if __name__ == "__main__":
     logger_setup()
     
-    import threading
+    # Send startup notification
+    send_notification_email("StockAlert Started", f"StockAlert monitoring started successfully at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Start monitoring both assets in separate threads
     sp500_thread = threading.Thread(target=monitor_asset, args=('sp500',))
@@ -210,5 +224,13 @@ if __name__ == "__main__":
     sp500_thread.start()
     bitcoin_thread.start()
     
-    sp500_thread.join()
-    bitcoin_thread.join()
+    try:
+        sp500_thread.join()
+        bitcoin_thread.join()
+    except KeyboardInterrupt:
+        LOG.info("Shutdown requested")
+        stop_event.set()
+    except Exception as e:
+        LOG.error(f"Main thread error: {e}")
+        send_notification_email("StockAlert Fatal Error", f"Application encountered fatal error: {str(e)}")
+        stop_event.set()

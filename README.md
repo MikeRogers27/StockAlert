@@ -5,8 +5,8 @@ Create your ssh keys and start agent.
 ### Clone the repo
     
 ```
-    cd ~/src
-    git clone git@github.com:MikeRogers27/StockAlert.git
+cd ~/src
+git clone git@github.com:MikeRogers27/StockAlert.git
 ```
 
 ### Virtual env
@@ -14,7 +14,7 @@ Create your ssh keys and start agent.
 Install uv:
 
 ```
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 Run ```source $HOME/.local/bin/env``` to add to path if required.
@@ -22,8 +22,8 @@ Run ```source $HOME/.local/bin/env``` to add to path if required.
 Setup a new virtual python env
 
 ```
-    cd StockAlert
-    uv sync
+cd StockAlert
+uv sync
 ```
 
 The environment will be created at ~/src/StockAlert/.venv
@@ -49,6 +49,9 @@ git pull
 # Get free API key from https://www.alphavantage.co/support/#api-key
 export ALPHA_VANTAGE_API_KEY=<API_KEY>
 
+# Get free demo API key from https://www.coingecko.com/
+export COIN_GECKO_API_KEY=<API_KEY>
+
 # Email configuration (for Gmail, enable 2FA and use App Password)
 export SENDER_EMAIL=<SENDER_EMAIL_ADRESS>
 export SENDER_PASSWORD=<GOOGLE_GMAIL_APP_PASSWORD>
@@ -61,7 +64,7 @@ sudo --preserve-env=ALPHA_VANTAGE_API_KEY,SENDER_EMAIL,SENDER_PASSWORD,RECIPIENT
 Now change to executable permissions:
 
 ```
-    chmod +x ~/run-stock-alerts.sh
+chmod +x ~/run-stock-alerts.sh
 ```
 
 ### Install as service
@@ -69,13 +72,13 @@ Now change to executable permissions:
 Create the log dir
 
 ```
-    mkdir ~/logs
+mkdir ~/logs
 ```
 
 Make a service configuration file
 
 ```
-    sudo nano /lib/systemd/system/stockalert.service
+sudo nano /lib/systemd/system/stockalert.service
 ```
 
 with this contents
@@ -102,15 +105,15 @@ WantedBy=multi-user.target
 Then enable the service
     
 ```
-    sudo systemctl daemon-reload
-    sudo systemctl enable stockalert.service
-    sudo reboot
+sudo systemctl daemon-reload
+sudo systemctl enable stockalert.service
+sudo reboot
 ```
 
 Commands use disable, start, stop etc
 
 ```
-    sudo systemctl start stockalert.service
+sudo systemctl start stockalert.service
 ```
 
 ## Gmail App Password Setup:
@@ -120,3 +123,9 @@ Commands use disable, start, stop etc
 * Search for "App Passwords"
 * Add a new password for "StockAlerts"
 * Copy and add to ENV
+
+## CoinGecko API key
+
+* Go to https://www.coingecko.com/
+* Sign up for the demo api by registering an account and visiting:
+    https://www.coingecko.com/en/developers/dashboard
