@@ -202,7 +202,10 @@ def monitor_asset(asset_type, check_interval=3600):
                 save_threshold_state(asset_type, state)
                 LOG.info(f"{asset_name} new drop threshold saved: {new_threshold:.1f}%")
             
-            time.sleep(check_interval)
+            # Sleep in 5-second intervals to check stop_event regularly
+            for _ in range(0, check_interval, 5):
+                if stop_event.wait(5):
+                    break
     
     except Exception as e:
         LOG.error(f"{asset_name} monitoring fatal error: {e}")
