@@ -8,7 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
-.vscode/launch.json
+.vscode/*
 stockalert.log
-sp500_cache.json
-threshold_cache.json
+*_cache.json
