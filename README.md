@@ -64,7 +64,7 @@ sudo --preserve-env=ALPHA_VANTAGE_API_KEY,SENDER_EMAIL,SENDER_PASSWORD,RECIPIENT
 Now change to executable permissions:
 
 ```
-chmod +x ~/run-stock-alerts.sh
+chmod +x ~/run-stock-alert.sh
 ```
 
 ### Install as service

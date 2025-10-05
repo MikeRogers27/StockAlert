@@ -15,22 +15,73 @@ from typing import Optional
 LOG : Optional[Logger] = None
 
 
-def logger_setup(loglevel='INFO'):
-    global LOG
-    LOG = logging.getLogger('StockAlerts')
-    numeric_level = getattr(logging, loglevel.upper(), None)
-    if not isinstance(numeric_level, int):
-        raise ValueError('Invalid log level: %s' % loglevel)
+def get_200_day_moving_average(asset_type):
+    """Get 200-day moving average for asset type"""
+    cache_file = f'{asset_type}_200day_cache.json'
+    
+    # Check if cache exists and is less than 1 day old
+    if os.path.exists(cache_file):
+        cache_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(cache_file))
+        if cache_age < timedelta(days=1):
+            LOG.info(f"Using cached {asset_type} 200-day MA data")
+            with open(cache_file, 'r') as f:
+                return json.load(f)['moving_average']
+    
+    LOG.info(f"Fetching {asset_type} 200-day historical data")
+    
+    if asset_type == 'sp500':
+        api_key = os.getenv('ALPHA_VANTAGE_API_KEY')
+        url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=SPY&outputsize=full&apikey={api_key}'
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        time_series = data['Time Series (Daily)']
+        
+        prices = [float(values['4. close']) for values in list(time_series.values())[:200]]
+    
+    elif asset_type == 'bitcoin':
+        api_key = os.getenv('COIN_GECKO_API_KEY')
+        headers = {"x-cg-demo-api-key": api_key} if api_key else {}
+        url = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=200'
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        prices = [price[1] for price in data['prices']]
+    
+    moving_average = statistics.mean(prices)
+    
+    # Cache the result
+    with open(cache_file, 'w') as f:
+        json.dump({'moving_average': moving_average, 'timestamp': datetime.now().isoformat()}, f)
+    
+    LOG.info(f"{asset_type} 200-day moving average: {moving_average:.2f}")
+    return moving_average
 
-    logging.basicConfig(
-        level=numeric_level,
-        format='%(asctime)s %(levelname)s:%(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        handlers=[
-            # logging.FileHandler('stockalert.log'),
-            logging.StreamHandler()
-        ]
-    )
+
+def get_current_price(asset_type):
+    """Get current price for asset"""
+    try:
+        if asset_type == 'sp500':
+            api_key = os.getenv('ALPHA_VANTAGE_API_KEY')
+            url = f'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=SPY&apikey={api_key}'
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            price = float(data['Global Quote']['05. price'])
+        elif asset_type == 'bitcoin':
+            api_key = os.getenv('COIN_GECKO_API_KEY')
+            headers = {"x-cg-demo-api-key": api_key}
+            url = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd'
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            price = data['bitcoin']['usd']
+        
+        LOG.info(f"Current {asset_type} price: {price}")
+        return price
+    except Exception as e:
+        LOG.error(f"Failed to get current {asset_type} price: {e}")
+        raise
 
 
 def get_historical_prices(asset_type):
@@ -80,31 +131,6 @@ def get_historical_prices(asset_type):
     
     return prices
 
-def get_current_price(asset_type):
-    """Get current price for asset"""
-    try:
-        if asset_type == 'sp500':
-            api_key = os.getenv('ALPHA_VANTAGE_API_KEY')
-            url = f'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=SPY&apikey={api_key}'
-            response = requests.get(url)
-            response.raise_for_status()
-            data = response.json()
-            price = float(data['Global Quote']['05. price'])
-        elif asset_type == 'bitcoin':
-            api_key = os.getenv('COIN_GECKO_API_KEY')
-            headers = {"x-cg-demo-api-key": api_key}
-            url = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd'
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            price = data['bitcoin']['usd']
-        
-        LOG.info(f"Current {asset_type} price: {price}")
-        return price
-    except Exception as e:
-        LOG.error(f"Failed to get current {asset_type} price: {e}")
-        raise
-
 
 def get_threshold_state(asset_type):
     """Get current threshold state from cache"""
@@ -128,10 +154,30 @@ def get_threshold_state(asset_type):
     return state
 
 
-def save_threshold_state(asset_type, state):
-    """Save threshold state to cache"""
-    with open(f'{asset_type}_threshold.json', 'w') as f:
-        json.dump(state, f)
+def logger_setup(loglevel='INFO'):
+    global LOG
+    LOG = logging.getLogger('StockAlerts')
+    numeric_level = getattr(logging, loglevel.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % loglevel)
+
+    logging.basicConfig(
+        level=numeric_level,
+        format='%(asctime)s %(levelname)s:%(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            # logging.FileHandler('stockalert.log'),
+            logging.StreamHandler()
+        ]
+    )
+
+
+def send_email(asset_type, current_price, peak_price, drop_percent):
+    """Send price drop alert email"""
+    asset_name = 'S&P 500' if asset_type == 'sp500' else 'Bitcoin'
+    subject = f"{asset_name} Alert: {drop_percent:.1f}% Drop from Peak"
+    body = f"{asset_name} has dropped {drop_percent:.1f}% from 3-month peak of {peak_price:.2f} to current price {current_price:.2f}"
+    send_notification_email(subject, body)
 
 
 def send_notification_email(subject, body):
@@ -160,12 +206,11 @@ def send_notification_email(subject, body):
     except Exception as e:
         LOG.error(f"Failed to send email: {e}")
 
-def send_email(asset_type, current_price, peak_price, drop_percent):
-    """Send price drop alert email"""
-    asset_name = 'S&P 500' if asset_type == 'sp500' else 'Bitcoin'
-    subject = f"{asset_name} Alert: {drop_percent:.1f}% Drop from Peak"
-    body = f"{asset_name} has dropped {drop_percent:.1f}% from 3-month peak of {peak_price:.2f} to current price {current_price:.2f}"
-    send_notification_email(subject, body)
+
+def save_threshold_state(asset_type, state):
+    """Save threshold state to cache"""
+    with open(f'{asset_type}_threshold.json', 'w') as f:
+        json.dump(state, f)
 
 
 import threading
@@ -214,7 +259,9 @@ def monitor_asset(asset_type, check_interval=3600):
         raise
 
 
-if __name__ == "__main__":
+def main():
+
+    # setup logging
     logger_setup()
     
     # Send startup notification
@@ -237,3 +284,7 @@ if __name__ == "__main__":
         LOG.error(f"Main thread error: {e}")
         send_notification_email("StockAlert Fatal Error", f"Application encountered fatal error: {str(e)}")
         stop_event.set()
+
+
+if __name__ == "__main__":
+    main()
