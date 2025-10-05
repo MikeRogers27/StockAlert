@@ -172,11 +172,11 @@ def logger_setup(loglevel='INFO'):
     )
 
 
-def send_email(asset_type, current_price, peak_price, drop_percent):
+def send_email_moving_average(asset_type, current_price, moving_average_price, drop_percent):
     """Send price drop alert email"""
     asset_name = 'S&P 500' if asset_type == 'sp500' else 'Bitcoin'
-    subject = f"{asset_name} Alert: {drop_percent:.1f}% Drop from Peak"
-    body = f"{asset_name} has dropped {drop_percent:.1f}% from 3-month peak of {peak_price:.2f} to current price {current_price:.2f}"
+    subject = f"{asset_name} Alert: {drop_percent:.1f}% Drop from 200DMA"
+    body = f"{asset_name} has dropped {drop_percent:.1f}% from 200DMA of {moving_average_price:.2f} to current price {current_price:.2f}"
     send_notification_email(subject, body)
 
 
@@ -227,19 +227,21 @@ def monitor_asset(asset_type, check_interval=3600):
             threshold_state = get_threshold_state(asset_type)
             threshold_percent = threshold_state['threshold_percent']
             
-            # Get historical data and calculate smoothed peak
-            historical_prices = get_historical_prices(asset_type)
-            smoothed_peak = statistics.mean(sorted(historical_prices, reverse=True)[:10])
+            # Get 200 day moving average
+            moving_average = get_200_day_moving_average(asset_type)
+            # historical_prices = get_historical_prices(asset_type)
+            # smoothed_peak = statistics.mean(sorted(historical_prices, reverse=True)[:10])
             
             # Get current price
             current_price = get_current_price(asset_type)
-            current_drop_percent = ((smoothed_peak - current_price) / smoothed_peak) * 100
+            current_drop_percent = ((moving_average - current_price) / moving_average) * 100
             
-            LOG.info(f"{asset_name} - Current: {current_price:.2f}, Peak: {smoothed_peak:.2f}, Drop: {current_drop_percent:.1f}%, Threshold: {threshold_percent:.1f}%")
+            LOG.info(f"{asset_name} - Current: {current_price:.2f}, 200DMA: {moving_average:.2f}, Drop: {current_drop_percent:.1f}%, Threshold: {threshold_percent:.1f}%")
             
             if current_drop_percent >= threshold_percent:
-                LOG.warning(f"{asset_name} alert triggered! Price dropped {current_drop_percent:.1f}% (threshold: {threshold_percent:.1f}%)")
-                send_email(asset_type, current_price, smoothed_peak, current_drop_percent)
+                LOG.warning(f"{asset_name} alert triggered! Price dropped {current_drop_percent:.1f}% (threshold: {threshold_percent:.1f}%)"
+                            f" vs 200DMA: {moving_average}")
+                send_email_moving_average(asset_type, current_price, moving_average, current_drop_percent)
                 
                 # Update threshold to require 1% further drop for next alert
                 new_threshold = current_drop_percent + 1.0
